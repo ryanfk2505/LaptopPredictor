@@ -212,9 +212,15 @@ gpu_options = ['Semua'] + unique_vals['gpu_details']
 gpu_detail = st.sidebar.selectbox("Kartu Grafis (GPU)", options=gpu_options)
 gpu_detail = None if gpu_detail == 'Semua' else gpu_detail
 
-screen_size = st.sidebar.slider("Ukuran Layar (inci)", min_value=10.0, max_value=18.0, value=13.0, step=0.1)
+use_screen_filter = st.sidebar.checkbox("Filter Ukuran Layar", value=False)
+screen_size = None
+if use_screen_filter:
+    screen_size = st.sidebar.slider(
+        "Ukuran Layar Minimal (inci)",
+        min_value=10.0, max_value=18.0, value=13.0, step=0.1
+    )
 rating_min = st.sidebar.number_input(
-    "Rating Pengguna Minimal", 
+    "Rating", 
     min_value=0, 
     max_value=100, 
     value=0, 
@@ -256,16 +262,24 @@ def recommend_laptops(price_max_inr, ram_min=None, cpu_detail=None, gpu_detail=N
         return pd.DataFrame()
     return filtered.sort_values('Price').head(n).reset_index(drop=True)
 
-def recommend_knn(budget, ram_min, rating_min, n_recommendations=5):
-    # Pakai preprocessor & knn_model yang sudah diload dari joblib
+def recommend_knn(budget, ram_min, rating_min, n_recommendations=5,
+                  cpu_detail=None, gpu_detail=None, screen_size_min=None):
+    
     numerical_cols = ['Price', 'RAM_GB', 'SSD_GB', 'Inches', 'Rating']
     categorical_cols = ['CPU_Detail', 'GPU_Detail', 'OS_Detail', 'Screen_Resolution_Type']
 
+    # Satu blok filter, tidak duplikat
     candidates = df_clean[df_clean['Price'] <= budget].copy()
     if ram_min:
         candidates = candidates[candidates['RAM_GB'] >= ram_min]
     if rating_min:
         candidates = candidates[candidates['Rating'] >= rating_min]
+    if cpu_detail:
+        candidates = candidates[candidates['CPU_Detail'].str.contains(cpu_detail, case=False, na=False)]
+    if gpu_detail:
+        candidates = candidates[candidates['GPU_Detail'].str.contains(gpu_detail, case=False, na=False)]
+    if screen_size_min:
+        candidates = candidates[candidates['Inches'] >= screen_size_min]
 
     if len(candidates) == 0:
         return pd.DataFrame(), None
@@ -273,14 +287,12 @@ def recommend_knn(budget, ram_min, rating_min, n_recommendations=5):
     best_idx = candidates['Rating'].idxmax()
     reference = df_clean.loc[best_idx]
 
-    # Gunakan preprocessor dari joblib (bukan buat baru)
     reference_df = pd.DataFrame(
         [reference[categorical_cols + numerical_cols].values],
         columns=categorical_cols + numerical_cols
     )
     query_processed = preprocessor.transform(reference_df)
 
-    # Gunakan knn_model dari joblib (bukan buat baru)
     distances, indices = knn_model.kneighbors(
         query_processed,
         n_neighbors=min(n_recommendations + 5, len(df_clean))
@@ -289,7 +301,7 @@ def recommend_knn(budget, ram_min, rating_min, n_recommendations=5):
     similar_laptops = []
     for i, idx in enumerate(indices[0]):
         if i == 0:
-            continue  # skip referensi sendiri
+            continue
         laptop = df_clean.iloc[idx]
         laptop_dict = laptop.to_dict()
         laptop_dict['Similarity'] = 1 - distances[0][i]
@@ -312,7 +324,7 @@ with col1:
         <p><b>RAM Minimal:</b> {f"{ram_min} GB" if ram_min else "Semua"}</p>
         <p><b>Spesifikasi CPU:</b> {cpu_detail if cpu_detail else "Semua"}</p>
         <p><b>Spesifikasi GPU:</b> {gpu_detail if gpu_detail else "Semua"}</p>
-        <p><b>Ukuran Layar:</b> {screen_size} Inci</p>
+        <p><b>Ukuran Layar:</b> {f"{screen_size} Inci" if screen_size else "Semua Ukuran"}</p>
         <p><b>Rating Produk:</b> {rating_min} / 100</p>
         <p><b>Metode:</b> {recommendation_method}</p>
     </div>
@@ -347,7 +359,10 @@ with col2:
                     st.error("Tidak ada laptop yang sesuai dengan kriteria filter Anda.")
             
             else:
-                results_knn, reference = recommend_knn(budget_inr, ram_min or 0, rating_min or 0, n_recs)
+                results_knn, reference = recommend_knn(
+                    budget_inr, ram_min or 0, rating_min or 0, n_recs,
+                    cpu_detail, gpu_detail, screen_size  # ← tambah ini
+                )
                 
                 if len(results_knn) > 0 and reference is not None:
                     st.markdown("### Rekomendasi KNN (Machine Learning)")
