@@ -117,14 +117,16 @@ def load_data():
     df = pd.read_csv('laptop_data.csv')
     return df
 
+# Load models (VERSION BARU DENGAN ONEHOTENCODER)
 @st.cache_resource
 def load_models():
-    knn_model = joblib.load('laptop_recommender_model.joblib')
-    scaler = joblib.load('laptop_scaler.joblib')
-    label_encoders = joblib.load('laptop_label_encoders.joblib')
-    return knn_model, scaler, label_encoders
+    knn_model = joblib.load('knn_model.joblib')           # ← ganti nama
+    preprocessor = joblib.load('preprocessor.joblib')     # ← ganti nama
+    return knn_model, preprocessor
 
-@st.cache_data
+# Panggil
+knn_model, preprocessor = load_models()
+
 def load_unique_values():
     with open('unique_values.json', 'r') as f:
         return json.load(f)
