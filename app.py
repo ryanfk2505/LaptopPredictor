@@ -213,7 +213,14 @@ gpu_detail = st.sidebar.selectbox("Kartu Grafis (GPU)", options=gpu_options)
 gpu_detail = None if gpu_detail == 'Semua' else gpu_detail
 
 screen_size = st.sidebar.slider("Ukuran Layar (inci)", min_value=10.0, max_value=18.0, value=13.0, step=0.1)
-rating_min = st.sidebar.slider("Rating Pengguna ", 0, 100, 0, 5)
+rating_min = st.sidebar.number_input(
+    "Rating Pengguna Minimal", 
+    min_value=0, 
+    max_value=100, 
+    value=0, 
+    step=5,
+    help="Masukkan rating minimal (0-100), atau gunakan tombol +/-"
+)
 n_recs = st.sidebar.slider("Jumlah Hasil Tampilan", 3, 10, 5)
 
 st.sidebar.markdown("---")
