@@ -150,7 +150,6 @@ def format_currency(amount, currency):
 # Load semua file
 try:
     df_clean = load_data()
-    knn_model, scaler, label_encoders = load_models()
     unique_vals = load_unique_values()
     exchange_rates = unique_vals.get('exchange_rates', {'INR': 1, 'IDR': 191.5})
     st.toast("Sistem siap digunakan.")
@@ -225,55 +224,47 @@ def recommend_laptops(price_max_inr, ram_min=None, cpu_detail=None, gpu_detail=N
     return filtered.sort_values('Price').head(n).reset_index(drop=True)
 
 def recommend_knn(budget, ram_min, rating_min, n_recommendations=5):
-    from sklearn.neighbors import NearestNeighbors
-    from sklearn.preprocessing import StandardScaler
-    import numpy as np
-    
+    # Pakai preprocessor & knn_model yang sudah diload dari joblib
+    numerical_cols = ['Price', 'RAM_GB', 'SSD_GB', 'Inches', 'Rating']
+    categorical_cols = ['CPU_Detail', 'GPU_Detail', 'OS_Detail', 'Screen_Resolution_Type']
+
     candidates = df_clean[df_clean['Price'] <= budget].copy()
-    candidates = candidates[candidates['RAM_GB'] >= ram_min]
-    candidates = candidates[candidates['Rating'] >= rating_min]
-    
+    if ram_min:
+        candidates = candidates[candidates['RAM_GB'] >= ram_min]
+    if rating_min:
+        candidates = candidates[candidates['Rating'] >= rating_min]
+
     if len(candidates) == 0:
         return pd.DataFrame(), None
-    
+
     best_idx = candidates['Rating'].idxmax()
     reference = df_clean.loc[best_idx]
-    
-    feature_cols = ['Price', 'RAM_GB', 'SSD_GB', 'Inches', 'Rating']
-    for col in ['CPU_Detail', 'GPU_Detail', 'OS_Detail']:
-        if col + '_Encoded' in df_clean.columns:
-            feature_cols.append(col + '_Encoded')
-    
-    X_all = df_clean[feature_cols].fillna(df_clean[feature_cols].median())
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X_all)
-    
-    knn = NearestNeighbors(n_neighbors=min(n_recommendations+1, len(df_clean)), metric='cosine')
-    knn.fit(X_scaled)
-    
-    idx_map = {original_idx: i for i, original_idx in enumerate(df_clean.index)}
-    if best_idx not in idx_map:
-        return pd.DataFrame(), None
-    
-    query_idx = idx_map[best_idx]
-    query_point = X_scaled[query_idx].reshape(1, -1)
-    distances, indices = knn.kneighbors(query_point, n_neighbors=min(n_recommendations+1, len(candidates)))
-    
-    reverse_map = {i: original_idx for original_idx, i in idx_map.items()}
-    similar_laptops = []
-    
-    for i, idx in enumerate(indices[0]):
-        if idx in reverse_map and i > 0:
-            original_idx = reverse_map[idx]
-            laptop = df_clean.loc[original_idx]
-            similarity = 1 - distances[0][i]
-            laptop_dict = laptop.to_dict()
-            laptop_dict['Similarity'] = similarity
-            similar_laptops.append(laptop_dict)
-    
-    results = pd.DataFrame(similar_laptops)
-    return results, reference
 
+    # Gunakan preprocessor dari joblib (bukan buat baru)
+    reference_df = pd.DataFrame(
+        [reference[categorical_cols + numerical_cols].values],
+        columns=categorical_cols + numerical_cols
+    )
+    query_processed = preprocessor.transform(reference_df)
+
+    # Gunakan knn_model dari joblib (bukan buat baru)
+    distances, indices = knn_model.kneighbors(
+        query_processed,
+        n_neighbors=min(n_recommendations + 5, len(df_clean))
+    )
+
+    similar_laptops = []
+    for i, idx in enumerate(indices[0]):
+        if i == 0:
+            continue  # skip referensi sendiri
+        laptop = df_clean.iloc[idx]
+        laptop_dict = laptop.to_dict()
+        laptop_dict['Similarity'] = 1 - distances[0][i]
+        similar_laptops.append(laptop_dict)
+        if len(similar_laptops) >= n_recommendations:
+            break
+
+    return pd.DataFrame(similar_laptops), reference
 # ============================================================
 # MAIN CONTENT
 # ============================================================
