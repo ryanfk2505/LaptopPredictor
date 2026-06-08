@@ -7,7 +7,11 @@ import json
 import matplotlib.pyplot as plt
 import warnings
 warnings.filterwarnings('ignore')
-
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.neighbors import NearestNeighbors
+from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
 # Page config
 st.set_page_config(
     page_title="Laptop Recommendation System",
@@ -120,8 +124,30 @@ def load_data():
 # Load models (VERSION BARU DENGAN ONEHOTENCODER)
 @st.cache_resource
 def load_models():
-    knn_model = joblib.load('knn_model.joblib')           # ← ganti nama
-    preprocessor = joblib.load('preprocessor.joblib')     # ← ganti nama
+    df = pd.read_csv('laptop_data.csv')
+
+    numerical_cols = ['Price', 'RAM_GB', 'SSD_GB', 'Inches', 'Rating']
+    categorical_cols = ['CPU_Detail', 'GPU_Detail', 'OS_Detail', 'Screen_Resolution_Type']
+
+    preprocessor = ColumnTransformer(transformers=[
+        ('num', Pipeline([
+            ('imputer', SimpleImputer(strategy='median')),
+            ('scaler', StandardScaler())
+        ]), numerical_cols),
+        ('cat', Pipeline([
+            ('imputer', SimpleImputer(strategy='constant', fill_value='Unknown')),
+            ('onehot', OneHotEncoder(handle_unknown='ignore', sparse_output=False))
+        ]), categorical_cols)
+    ])
+
+    X_processed = preprocessor.fit_transform(df)
+
+    knn_model = NearestNeighbors(
+        n_neighbors=min(11, len(df)),
+        metric='cosine'
+    )
+    knn_model.fit(X_processed)
+
     return knn_model, preprocessor
 
 # Panggil
